@@ -2,7 +2,12 @@ apply plugin: 'com.android.library'
 
 android {
     compileSdkVersion 21
-    buildToolsVersion "21.1.2"
+    buildToolsVersion "24.0.0"
+
+    compileOptions{
+        sourceCompatibility=JavaVersion.VERSION_1_7
+        targetCompatibility=JavaVersion.VERSION_1_7
+    }
 
     defaultConfig {
         minSdkVersion 8
@@ -23,3 +28,5 @@ dependencies {
     compile 'com.android.support:appcompat-v7:21.0.3'
     compile project(':signalr-client-sdk')
 }
+
+apply from: rootProject.file('gradle/gradle-is-mvn-push.gradle')

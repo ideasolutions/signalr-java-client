@@ -2,7 +2,7 @@ apply plugin: 'com.android.application'
 
 android {
     compileSdkVersion 21
-    buildToolsVersion "21.1.2"
+    buildToolsVersion "24.0.0"
 
     defaultConfig {
         applicationId "client.signalr.aspnet.microsoft.signalr_client_test_integration_android"
@@ -19,6 +19,10 @@ android {
     }
     lintOptions {
         abortOnError false
+    }
+    compileOptions{
+        sourceCompatibility=JavaVersion.VERSION_1_7
+        targetCompatibility=JavaVersion.VERSION_1_7
     }
 }
 
