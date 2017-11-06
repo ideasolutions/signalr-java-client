@@ -172,10 +172,6 @@ public class OkWebsocketTransportNew implements ClientTransport {
         }
 
         final com.squareup.okhttp.Request.Builder reqBuilder = new com.squareup.okhttp.Request.Builder().get().url(url);
-//        for (Map.Entry<String, String> h : connection.getHeaders().entrySet()) {
-//            reqBuilder.addHeader(h.getKey(), h.getValue());
-//        }
-
         final UpdateableCancellableFuture<Void> connectionFuture = new UpdateableCancellableFuture<Void>(null);
         final ConnectionWebSocketListener connectionWebSocketListener = new ConnectionWebSocketListener(connectionFuture, callback);
 
