@@ -16,6 +16,7 @@ import microsoft.aspnet.signalr.client.UpdateableCancellableFuture;
 import microsoft.aspnet.signalr.client.http.InvalidHttpStatusCodeException;
 import okhttp3.Call;
 import okhttp3.Callback;
+import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.RequestBody;
@@ -143,25 +144,21 @@ public class OkWebsocketTransportNew implements ClientTransport {
         final UpdateableCancellableFuture<Void> connectionFuture = new UpdateableCancellableFuture<Void>(null);
         final ConnectionWebSocketListener connectionWebSocketListener = new ConnectionWebSocketListener(connectionFuture, callback);
 
-        final WebSocketCall call = WebSocketCall.create(mOkHttpClient, reqBuilder.build());
+        connectionWebSocketListener.webSocket = mOkHttpClient.newWebSocket(reqBuilder.build(), connectionWebSocketListener);
+
         connectionFuture.onCancelled(new Runnable() {
             @Override
             public void run() {
-                call.cancel();
+//                call.cancel();
+//                connectionWebSocketListener.webSocket.cancel();
                 if (connectionWebSocketListener.abortCalled) return;
                 final WebSocket webSocket = connectionWebSocketListener.webSocket;
                 if (webSocket != null) {
-                    try {
-                        webSocket.close(1000, "");
-                    } catch (IOException e) {
-                        log(e);
-                    }
+                    webSocket.close(1000, "");
                 }
                 connectionWebSocketListener.webSocket = null;
             }
         });
-
-        call.enqueue(connectionWebSocketListener);
 
         mCurrentWebSocketListener = connectionWebSocketListener;
         return connectionFuture;
@@ -181,11 +178,14 @@ public class OkWebsocketTransportNew implements ClientTransport {
             @Override
             public void run() {
                 if (connectionFuture.isCancelled()) return;
-                try {
-                    webSocket.sendMessage(RequestBody.create(WebSocket.TEXT, data));
-                } catch (IOException e) {
-                    if (!connectionFuture.isCancelled()) connectionFuture.triggerError(e);
-                }
+//                try {
+                    MediaType TEXT = MediaType.parse("application/vnd.okhttp.websocket+text; charset=utf-8");
+                    if (!webSocket.send(/*String.valueOf(RequestBody.create(TEXT, data))*/ data)) {
+                        if (!connectionFuture.isCancelled()) connectionFuture.triggerError(new Exception("webSocket.send(data) returned false"));
+                    }
+//                } catch (IOException e) {
+//                    if (!connectionFuture.isCancelled()) connectionFuture.triggerError(e);
+//                }
             }
         });
 
@@ -271,7 +271,7 @@ public class OkWebsocketTransportNew implements ClientTransport {
         public void onFailure(WebSocket webSocket, Throwable t, Response response) {
             if (!connectionFuture.isCancelled() && !abortCalled) {
                 connectionFuture.cancel();
-                connectionFuture.triggerError(e);
+                connectionFuture.triggerError(t);
             }
         }
 
@@ -295,7 +295,12 @@ public class OkWebsocketTransportNew implements ClientTransport {
             webSocket = null;
         }
 
-//        @Override
+        @Override
+        public void onClosed(WebSocket webSocket, int code, String reason) {
+            super.onClosed(webSocket, code, reason);
+        }
+
+        //        @Override
 //        public void onPong(Buffer payload) {
 //            payload.close();
 //        }
