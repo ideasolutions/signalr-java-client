@@ -2,7 +2,7 @@ apply plugin: 'com.android.application'
 
 android {
     compileSdkVersion 21
-    buildToolsVersion "21.1.2"
+    buildToolsVersion '27.0.3'
 
     defaultConfig {
         applicationId "client.signalr.aspnet.microsoft.signalr_client_test_integration_android"
@@ -23,8 +23,9 @@ android {
 }
 
 dependencies {
-    compile fileTree(dir: 'libs', include: ['*.jar'])
-    compile 'com.android.support:appcompat-v7:21.0.3'
-    compile project(':signalr-client-test-integration-base')
-    compile project(':signalr-client-sdk-android')
+    implementation fileTree(dir: 'libs', include: ['*.jar'])
+    implementation 'com.android.support:appcompat-v7:21.0.3'
+    implementation project(':signalr-client-test-integration-base')
+    implementation project(':signalr-client-sdk-android')
+    implementation project(path: ':signalr-client-sdk')
 }
