@@ -1,14 +1,5 @@
 package microsoft.aspnet.signalr.client.transport;
 
-import com.squareup.okhttp.Call;
-import com.squareup.okhttp.Callback;
-import com.squareup.okhttp.OkHttpClient;
-import com.squareup.okhttp.RequestBody;
-import com.squareup.okhttp.ResponseBody;
-import com.squareup.okhttp.ws.WebSocket;
-import com.squareup.okhttp.ws.WebSocketCall;
-import com.squareup.okhttp.ws.WebSocketListener;
-
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
@@ -24,8 +15,14 @@ import microsoft.aspnet.signalr.client.Logger;
 import microsoft.aspnet.signalr.client.SignalRFuture;
 import microsoft.aspnet.signalr.client.UpdateableCancellableFuture;
 import microsoft.aspnet.signalr.client.http.InvalidHttpStatusCodeException;
-import okio.Buffer;
-import okio.BufferedSource;
+import okhttp3.Call;
+import okhttp3.Callback;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.RequestBody;
+import okhttp3.Response;
+import okhttp3.WebSocket;
+import okhttp3.WebSocketListener;
 
 /**
  * Created by giovannimeo on 31/10/17.
@@ -46,8 +43,7 @@ public class OkWebsocketTransportNew implements ClientTransport {
             throw new IllegalArgumentException("logger");
         }
 
-        this.mOkHttpClient = okHttpClient;
-        this.mOkHttpClient.setReadTimeout(0, TimeUnit.MILLISECONDS);
+        this.mOkHttpClient = okHttpClient.newBuilder().readTimeout(0, TimeUnit.MILLISECONDS).build();
         this.mLogger = logger;
     }
 
@@ -66,7 +62,7 @@ public class OkWebsocketTransportNew implements ClientTransport {
         log("Start the negotiation with the server", LogLevel.Information);
 
         String url = connection.getUrl() + "negotiate" + TransportHelper.getNegotiateQueryString(connection);
-        com.squareup.okhttp.Request request = new com.squareup.okhttp.Request.Builder()
+        Request request = new Request.Builder()
                 .url(url)
                 .method(Constants.HTTP_GET, null)
                 .build();
@@ -87,12 +83,12 @@ public class OkWebsocketTransportNew implements ClientTransport {
             }
 
             @Override
-            public void onFailure(com.squareup.okhttp.Request request, IOException e) {
+            public void onFailure(Call call, IOException e) {
                 handleFailure(e);
             }
 
             @Override
-            public void onResponse(com.squareup.okhttp.Response response) throws IOException {
+            public void onResponse(Call call, Response response) throws IOException {
                 try {
                     log("Response received", LogLevel.Verbose);
                     if (response.isSuccessful())
@@ -102,44 +98,11 @@ public class OkWebsocketTransportNew implements ClientTransport {
                 } catch (InvalidHttpStatusCodeException e) {
                     handleFailure(e);
                 } finally {
-                    response.body().close();
+                    if (response.body() != null)
+                        response.body().close();
                 }
             }
         });
-
-
-
-//        Request get = new Request(Constants.HTTP_GET);
-//        get.setUrl(url);
-//        get.setVerb(Constants.HTTP_GET);
-//        get.setHeaders(connection.getHeaders());
-//
-//        connection.prepareRequest(get);
-//
-//        final SignalRFuture<NegotiationResponse> negotiationFuture = new SignalRFuture<NegotiationResponse>();
-//
-//        log("Execute the request", LogLevel.Verbose);
-//        HttpConnectionFuture connectionFuture = mHttpConnection.execute(get, new HttpConnectionFuture.ResponseCallback() {
-//
-//            public void onResponse(Response response) {
-//                try {
-//                    log("Response received", LogLevel.Verbose);
-//                    throwOnInvalidStatusCode (response);
-//
-//                    log("Read response data to the end", LogLevel.Verbose);
-//                    String negotiationContent = response.readToEnd();
-//
-//                    log("Trigger onSuccess with negotiation data: " + negotiationContent, LogLevel.Verbose);
-//                    negotiationFuture.setResult(new NegotiationResponse(negotiationContent, connection.getJsonParser()));
-//
-//                } catch (Throwable e) {
-//                    log(e);
-//                    negotiationFuture.triggerError(new NegotiationException("There was a problem in the negotiation with the server", e));
-//                }
-//            }
-//        });
-//
-//        FutureHelper.copyHandlers(connectionFuture, negotiationFuture);
 
         return negotiationFuture;
     }
@@ -171,33 +134,32 @@ public class OkWebsocketTransportNew implements ClientTransport {
             e.printStackTrace();
         }
 
-        final com.squareup.okhttp.Request.Builder reqBuilder = new com.squareup.okhttp.Request.Builder().get().url(url);
-//        for (Map.Entry<String, String> h : connection.getHeaders().entrySet()) {
+        //noinspection ConstantConditions se l'url è null, OkHttp solleva un NullPointerException
+        final Request.Builder reqBuilder = new Request.Builder().get().url(url);
+//        for (Map.Entry<String, String> h : connection.getHeaders().entrySet()) { // TODO perché è commentato?
 //            reqBuilder.addHeader(h.getKey(), h.getValue());
 //        }
 
         final UpdateableCancellableFuture<Void> connectionFuture = new UpdateableCancellableFuture<Void>(null);
         final ConnectionWebSocketListener connectionWebSocketListener = new ConnectionWebSocketListener(connectionFuture, callback);
 
-        final WebSocketCall call = WebSocketCall.create(mOkHttpClient, reqBuilder.build());
+        mOkHttpClient.newWebSocket(reqBuilder.build(), connectionWebSocketListener);
+
         connectionFuture.onCancelled(new Runnable() {
             @Override
             public void run() {
-                call.cancel();
+                if (connectionWebSocketListener.webSocket != null)
+                    connectionWebSocketListener.webSocket.cancel();
+
                 if (connectionWebSocketListener.abortCalled) return;
+
                 final WebSocket webSocket = connectionWebSocketListener.webSocket;
                 if (webSocket != null) {
-                    try {
-                        webSocket.close(1000, "");
-                    } catch (IOException e) {
-                        log(e);
-                    }
+                    webSocket.close(1000, "");
                 }
                 connectionWebSocketListener.webSocket = null;
             }
         });
-
-        call.enqueue(connectionWebSocketListener);
 
         mCurrentWebSocketListener = connectionWebSocketListener;
         return connectionFuture;
@@ -217,11 +179,9 @@ public class OkWebsocketTransportNew implements ClientTransport {
             @Override
             public void run() {
                 if (connectionFuture.isCancelled()) return;
-                try {
-                    webSocket.sendMessage(RequestBody.create(WebSocket.TEXT, data));
-                } catch (IOException e) {
-                    if (!connectionFuture.isCancelled()) connectionFuture.triggerError(e);
-                }
+                final boolean isDataSent = webSocket.send(data);
+                if (!isDataSent && !connectionFuture.isCancelled())
+                    connectionFuture.triggerError(new Exception("webSocket.send(data) returned false"));
             }
         });
 
@@ -238,7 +198,7 @@ public class OkWebsocketTransportNew implements ClientTransport {
                 mStartedAbort = true;
                 String url = connection.getUrl() + "abort" + TransportHelper.getSendQueryString(this, connection);
 
-                com.squareup.okhttp.Request postRequest = new com.squareup.okhttp.Request.Builder()
+                Request postRequest = new Request.Builder()
                         .url(url)
                         .method(Constants.HTTP_POST, RequestBody.create(null, ""))
                         .build();
@@ -256,7 +216,7 @@ public class OkWebsocketTransportNew implements ClientTransport {
 
                 call.enqueue(new Callback() {
                     @Override
-                    public void onFailure(com.squareup.okhttp.Request request, IOException e) {
+                    public void onFailure(Call call, IOException e) {
                         log(e);
                         log("Finishing abort", LogLevel.Verbose);
                         mStartedAbort = false;
@@ -264,7 +224,7 @@ public class OkWebsocketTransportNew implements ClientTransport {
                     }
 
                     @Override
-                    public void onResponse(com.squareup.okhttp.Response response) throws IOException {
+                    public void onResponse(Call call, Response response) throws IOException {
                         log("Finishing abort", LogLevel.Verbose);
                         mStartedAbort = false;
                         mAbortFuture.setResult(null);
@@ -286,7 +246,7 @@ public class OkWebsocketTransportNew implements ClientTransport {
         mLogger.log(getName() + " - Error: " + error.toString(), LogLevel.Critical);
     }
 
-    private static class ConnectionWebSocketListener implements WebSocketListener {
+    private static class ConnectionWebSocketListener extends WebSocketListener {
         final SignalRFuture<Void> connectionFuture;
         final DataResultCallback dataCallback;
         WebSocket webSocket;
@@ -298,32 +258,26 @@ public class OkWebsocketTransportNew implements ClientTransport {
         }
 
         @Override
-        public void onOpen(WebSocket webSocket, com.squareup.okhttp.Response response) {
+        public void onOpen(WebSocket webSocket, Response response) {
             this.webSocket = webSocket;
             connectionFuture.setResult(null);
         }
 
         @Override
-        public void onFailure(IOException e, com.squareup.okhttp.Response response) {
+        public void onFailure(WebSocket webSocket, Throwable t, Response response) {
             if (!connectionFuture.isCancelled() && !abortCalled) {
                 connectionFuture.cancel();
-                connectionFuture.triggerError(e);
+                connectionFuture.triggerError(t);
             }
         }
 
         @Override
-        public void onMessage(ResponseBody message) throws IOException {
-            dataCallback.onData(message.string());
-            message.close();
+        public void onMessage(WebSocket webSocket, String text) {
+            dataCallback.onData(text);
         }
 
         @Override
-        public void onPong(Buffer payload) {
-            payload.close();
-        }
-
-        @Override
-        public void onClose(int code, String reason) {
+        public void onClosing(WebSocket webSocket, int code, String reason) {
             if (!connectionFuture.isCancelled() && !abortCalled) {
                 connectionFuture.triggerError(new Exception("Received close from server"));
             }
