@@ -17,6 +17,7 @@ import microsoft.aspnet.signalr.client.ConnectionBase;
 import microsoft.aspnet.signalr.client.Logger;
 import microsoft.aspnet.signalr.client.NullLogger;
 import microsoft.aspnet.signalr.client.http.HttpConnection;
+import okhttp3.OkHttpClient;
 
 /**
  * ClientTransport implementation that selects the best available transport
@@ -59,7 +60,7 @@ public class AutomaticTransport extends HttpClientTransport {
 
     private void initialize(Logger logger) {
         mTransports = new ArrayList<ClientTransport>();
-        mTransports.add(new OkWebsocketTransport(logger));
+        mTransports.add(new OkWebsocketTransportNew(new OkHttpClient(), logger));
         mTransports.add(new ServerSentEventsTransport(logger));
         mTransports.add(new LongPollingTransport(logger));
     }
