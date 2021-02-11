@@ -27,5 +27,5 @@ dependencies {
     implementation 'com.android.support:appcompat-v7:21.0.3'
     implementation project(':signalr-client-test-integration-base')
     implementation project(':signalr-client-sdk-android')
-    implementation project(path: ':signalr-client-sdk')
+    implementation project(':signalr-client-sdk')
 }
